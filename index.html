@@ -231,6 +231,78 @@
             </div>
           );
         };
+        
+        // --- NEW from components/SimpleReportModal.tsx ---
+        const SimpleReportModal = ({ visit, isOpen, onClose }) => {
+          const [copyStatus, setCopyStatus] = useState('コピー');
+          
+          useEffect(() => {
+              if (isOpen) {
+                  setCopyStatus('コピー');
+              }
+          }, [isOpen]);
+
+          if (!isOpen || !visit) return null;
+
+          const reportText = visit.todos
+              .filter(todo => todo.completed)
+              .map((todo, index) => {
+                  const detailsText = (todo.details || '')
+                      .split('\n')
+                      .filter(line => line.trim() !== '')
+                      .map(line => ` ・${line.trim()}`)
+                      .join('\n');
+                  return `(${index + 1}) ${todo.text}${detailsText ? '\n' + detailsText : ''}`;
+              })
+              .join('\n\n');
+
+          const handleCopy = () => {
+              navigator.clipboard.writeText(reportText).then(() => {
+                  setCopyStatus('コピーしました！');
+                  setTimeout(() => setCopyStatus('コピー'), 2000);
+              }, () => {
+                  setCopyStatus('失敗しました');
+                  setTimeout(() => setCopyStatus('コピー'), 2000);
+              });
+          };
+
+          return (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+                  <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 animate-fade-in-up">
+                      <div className="flex justify-between items-start">
+                          <h2 className="text-xl font-bold text-slate-800 mb-2">訪問レポート</h2>
+                          <button onClick={onClose} className="text-slate-500 hover:text-slate-800 transition">
+                              <i className="fas fa-times fa-lg"></i>
+                          </button>
+                      </div>
+                      <p className="text-sm text-slate-600 mb-4">{visit.firmName} 様 ({visit.date})</p>
+                      
+                      <div className="bg-slate-50 p-4 rounded-md mb-6 max-h-[60vh] overflow-y-auto">
+                          <pre className="text-sm text-slate-800 whitespace-pre-wrap font-sans">
+                              {reportText || 'レポート内容がありません。'}
+                          </pre>
+                      </div>
+                      
+                      <div className="flex justify-end gap-3">
+                          <button
+                              onClick={onClose}
+                              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 transition"
+                          >
+                              閉じる
+                          </button>
+                          <button
+                              onClick={handleCopy}
+                              className={`px-4 py-2 text-white font-semibold rounded-md transition ${copyStatus === 'コピーしました！' ? 'bg-green-500' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                              disabled={!reportText}
+                          >
+                              <i className="fas fa-copy mr-2"></i>{copyStatus}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          );
+        };
+
 
         // --- from components/AddVisitModal.tsx ---
         const AddVisitModal = ({ isOpen, onClose, firms, onAddVisit, date, carriedOverTodos }) => {
@@ -399,7 +471,7 @@
         };
         
         // --- from components/VisitCard.tsx ---
-        const VisitCard = ({ visit, onUpdateVisit, onGenerateReport, onCompleteVisit, onRevertCompleteVisit, onCarryOverTodo, onDeleteVisit, showCompleteButton = true }) => {
+        const VisitCard = ({ visit, onUpdateVisit, onGenerateReport, onCompleteVisit, onRevertCompleteVisit, onCarryOverTodo, onDeleteVisit, showCompleteButton = true, showDate = false, hideStatusBadge = false }) => {
           const [newTodoText, setNewTodoText] = useState('');
           const isCompleted = visit.status === 'completed';
 
@@ -443,9 +515,12 @@
           return (
             <div className={`bg-white rounded-lg shadow-md flex flex-col`}>
               <header className={`p-4 border-b border-slate-200 flex justify-between items-center ${isCompleted ? 'bg-slate-100' : ''}`}>
-                <h2 className="text-lg font-bold text-slate-800 truncate">{visit.firmName}</h2>
+                <h2 className="text-lg font-bold text-slate-800 truncate">
+                    {visit.firmName}
+                    {showDate && <span className="ml-2 text-sm font-normal text-slate-500">({visit.date})</span>}
+                </h2>
                 <div className="flex items-center gap-2">
-                    {isCompleted && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">完了済み</span>}
+                    {isCompleted && !hideStatusBadge && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">完了済み</span>}
                     {onDeleteVisit && !isCompleted && (
                         <button onClick={handleDeleteVisitClick} className="text-slate-400 hover:text-red-500 transition px-2" title="訪問予定を削除">
                             <i className="fas fa-trash-alt"></i>
@@ -505,7 +580,7 @@
                     onClick={() => onGenerateReport(visit)}
                     className="flex-1 px-4 py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition"
                   >
-                    {isCompleted ? 'レポートを再表示' : '訪問レポート作成'}
+                    {isCompleted ? 'レポートを表示' : '訪問レポート作成'}
                   </button>
                 )}
                 {isCompleted ? (
@@ -540,8 +615,8 @@
                 isActive ? 'text-cyan-600' : 'text-slate-500 hover:text-cyan-500'
               }`}
             >
-              <i className={`fas ${icon} fa-lg`}></i>
-              <span className="text-xs mt-1">{label}</span>
+              <i className={`fas ${icon}`}></i>
+              <span className="text-xs mt-1.5">{label}</span>
             </button>
           );
         };
@@ -581,39 +656,72 @@
           );
         };
         
-        // --- NEW from components/UnscheduledTasksModal.tsx ---
+        // --- from components/UnscheduledTasksModal.tsx ---
         const UnscheduledTasksModal = ({ isOpen, onClose, firms, carriedOverTodos, onUpdateCarriedOverTodos }) => {
-          const [selectedFirmId, setSelectedFirmId] = useState('');
+          const [selectedFirm, setSelectedFirm] = useState(null);
+          const [searchQuery, setSearchQuery] = useState('');
+          const [showResults, setShowResults] = useState(false);
           const [todos, setTodos] = useState([]);
           const [newTodoText, setNewTodoText] = useState('');
+          const searchContainerRef = useRef(null);
 
           useEffect(() => {
-            if (isOpen && firms.length > 0) {
-              const initialFirmId = firms[0].id;
-              setSelectedFirmId(initialFirmId);
-              setTodos(carriedOverTodos[initialFirmId] || []);
-            } else if (!isOpen) {
-              setSelectedFirmId('');
+            if (!isOpen) {
+              setSelectedFirm(null);
+              setSearchQuery('');
+              setShowResults(false);
               setTodos([]);
+              setNewTodoText('');
             }
-          }, [isOpen, firms]);
+          }, [isOpen]);
 
           useEffect(() => {
-            setTodos(carriedOverTodos[selectedFirmId] || []);
+            const handleClickOutside = (event) => {
+              if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+                setShowResults(false);
+              }
+            };
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => document.removeEventListener("mousedown", handleClickOutside);
+          }, []);
+          
+          const filteredFirms = useMemo(() => {
+            if (!searchQuery || selectedFirm) return [];
+            const lowerCaseQuery = searchQuery.toLowerCase();
+            return firms.filter(firm => 
+                (firm.name || '').toLowerCase().includes(lowerCaseQuery) || 
+                (firm.code || '').includes(searchQuery)
+            ).slice(0, 10);
+          }, [searchQuery, firms, selectedFirm]);
+          
+          const handleSearchChange = (e) => {
+            setSearchQuery(e.target.value);
+            setSelectedFirm(null);
+            setShowResults(true);
+          };
+          
+          const handleSelectFirm = (firm) => {
+            setSelectedFirm(firm);
+            setSearchQuery(`${firm.code} ${firm.name}`);
+            setShowResults(false);
+          };
+          
+          useEffect(() => {
+            setTodos(selectedFirm ? (carriedOverTodos[selectedFirm.id] || []) : []);
             setNewTodoText('');
-          }, [selectedFirmId, carriedOverTodos]);
+          }, [selectedFirm, carriedOverTodos]);
 
           if (!isOpen) return null;
 
           const handleAddTodo = () => {
-            if (newTodoText.trim() === '') return;
+            if (newTodoText.trim() === '' || !selectedFirm) return;
             const newTodo = {
               id: Date.now().toString(),
               text: newTodoText.trim(),
               completed: false,
               details: ''
             };
-            setTodos([...todos, newTodo]);
+            setTodos(prev => [...prev, newTodo]);
             setNewTodoText('');
           };
 
@@ -622,7 +730,9 @@
           };
           
           const handleSave = () => {
-            onUpdateCarriedOverTodos(selectedFirmId, todos);
+            if (selectedFirm) {
+              onUpdateCarriedOverTodos(selectedFirm.id, todos);
+            }
             onClose();
           };
 
@@ -632,22 +742,32 @@
                 <h2 className="text-xl font-bold text-slate-800 mb-4">日程未定ToDoの管理</h2>
                 
                 <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">対象の事務所</label>
-                        <select
-                          value={selectedFirmId}
-                          onChange={e => setSelectedFirmId(e.target.value)}
-                          className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-cyan-500"
-                        >
-                          {firms.map(firm => (
-                            <option key={firm.id} value={firm.id}>{firm.code} - {firm.name}</option>
-                          ))}
-                        </select>
+                    <div ref={searchContainerRef} className="relative">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">対象の事務所 (コード/名称で検索)</label>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            onFocus={() => setShowResults(true)}
+                            placeholder="事務所を検索..."
+                            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-cyan-500"
+                            autoComplete="off"
+                         />
+                         {showResults && filteredFirms.length > 0 && (
+                            <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                {filteredFirms.map(firm => (
+                                    <li key={firm.id} onClick={() => handleSelectFirm(firm)} className="px-4 py-2 hover:bg-cyan-50 cursor-pointer">
+                                        <span className="font-bold">{firm.code}</span> - {firm.name}
+                                    </li>
+                                ))}
+                            </ul>
+                         )}
                     </div>
 
                     <div className="bg-slate-50 p-3 rounded-md min-h-[150px] max-h-[30vh] overflow-y-auto">
                         <h3 className="font-semibold text-slate-600 mb-2">登録済みToDo</h3>
-                        {todos.length > 0 ? (
+                        {selectedFirm ? (
+                           todos.length > 0 ? (
                             <ul className="space-y-2">
                                 {todos.map(todo => (
                                     <li key={todo.id} className="flex items-center justify-between bg-white p-2 rounded shadow-sm">
@@ -658,8 +778,11 @@
                                     </li>
                                 ))}
                             </ul>
-                        ) : (
+                           ) : (
                             <p className="text-slate-500 text-sm text-center py-4">登録済みのToDoはありません。</p>
+                           )
+                        ) : (
+                            <p className="text-slate-500 text-sm text-center py-4">まず事務所を選択してください。</p>
                         )}
                     </div>
 
@@ -668,16 +791,17 @@
                             type="text"
                             value={newTodoText}
                             onChange={e => setNewTodoText(e.target.value)}
-                            placeholder="新しいToDoを入力"
-                            className="flex-grow px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-cyan-500"
+                            placeholder={selectedFirm ? "新しいToDoを入力" : "事務所を選択してください"}
+                            className="flex-grow px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-cyan-500 disabled:bg-slate-100"
+                            disabled={!selectedFirm}
                         />
-                        <button onClick={handleAddTodo} className="px-4 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700">追加</button>
+                        <button onClick={handleAddTodo} className="px-4 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 disabled:bg-slate-400" disabled={!selectedFirm || !newTodoText.trim()}>追加</button>
                     </div>
                 </div>
 
                 <div className="mt-6 flex justify-end space-x-3">
                   <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 transition">キャンセル</button>
-                  <button type="button" onClick={handleSave} className="px-4 py-2 bg-green-600 text-white font-bold rounded-md hover:bg-green-700 transition">保存して閉じる</button>
+                  <button type="button" onClick={handleSave} className="px-4 py-2 bg-green-600 text-white font-bold rounded-md hover:bg-green-700 transition disabled:bg-slate-400" disabled={!selectedFirm}>保存して閉じる</button>
                 </div>
               </div>
             </div>
@@ -829,7 +953,7 @@
         };
         
         // --- from pages/MasterPage.tsx ---
-        const MasterPage = ({ firms, onAddFirm, onDeleteFirm, onResetVisitStatus }) => {
+        const MasterPage = ({ firms, onAddFirm, onDeleteFirm }) => {
           return (
             <div className="container mx-auto px-4 py-6 max-w-4xl">
                 <div className="flex justify-end items-center mb-4">
@@ -843,33 +967,23 @@
                 </div>
               <div className="bg-white rounded-lg shadow-sm">
                 <div className="p-3 bg-slate-50 border-b border-slate-200 rounded-t-lg flex font-bold text-slate-600 text-sm">
-                    <div className="w-1/4">コード</div>
-                    <div className="w-2/4">事務所名</div>
-                    <div className="w-1/4 text-right">アクション</div>
+                    <div className="w-1/5">コード</div>
+                    <div className="w-3/5">事務所名</div>
+                    <div className="w-1/5 text-right">アクション</div>
                 </div>
                 <div className="space-y-1 p-2">
                   {firms.length > 0 ? (
                     firms.map((firm) => (
                       <div key={firm.id} className="p-2 rounded-md flex items-center justify-between hover:bg-slate-50">
-                        <div className="w-1/4 flex items-center">
-                          {firm.visited ? (
-                            <i className="fas fa-check-circle text-green-500 mr-3" title="訪問済み"></i>
-                          ) : (
-                            <i className="far fa-circle text-slate-400 mr-3" title="未訪問"></i>
-                          )}
+                        <div className="w-1/5">
                           <span className="font-mono text-slate-700">{firm.code}</span>
                         </div>
-                        <div className="w-2/4">
-                          <span className={`font-medium ${firm.visited ? 'text-slate-500' : 'text-slate-800'}`}>
+                        <div className="w-3/5">
+                          <span className="font-medium text-slate-800">
                             {firm.name}
                           </span>
                         </div>
-                        <div className="w-1/4 flex items-center justify-end space-x-1">
-                          {firm.visited && (
-                            <button onClick={() => onResetVisitStatus(firm.id)} className="text-slate-500 hover:text-cyan-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-cyan-50 transition" title="未訪問に戻す">
-                              <i className="fas fa-rotate-left"></i>
-                            </button>
-                          )}
+                        <div className="w-1/5 flex items-center justify-end">
                           <button onClick={() => onDeleteFirm(firm.id)} className="text-slate-400 hover:text-red-500 w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 transition" title="削除">
                             <i className="fas fa-trash-alt"></i>
                           </button>
@@ -890,7 +1004,7 @@
         };
         
         // --- from pages/CalendarPage.tsx ---
-        const CalendarPage = ({ visits, onAddVisit, onUpdateVisit, onGenerateReport, onCompleteVisit, onRevertCompleteVisit, onCarryOverTodo, onDeleteVisit, onManageUnscheduled }) => {
+        const CalendarPage = ({ visits, onAddVisit, onUpdateVisit, onGenerateReport, onCarryOverTodo, onDeleteVisit, onManageUnscheduled }) => {
           const [currentDate, setCurrentDate] = useState(new Date());
           const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -1002,7 +1116,7 @@
           );
         };
         
-        // --- NEW from pages/HistoryPage.tsx ---
+        // --- from pages/HistoryPage.tsx ---
         const HistoryPage = ({ firms, visits, onGenerateReport }) => {
             const [filters, setFilters] = useState({ firmId: '', startDate: '', endDate: '' });
 
@@ -1049,6 +1163,8 @@
                                     key={visit.id}
                                     visit={visit}
                                     onGenerateReport={onGenerateReport}
+                                    showDate={true}
+                                    hideStatusBadge={true}
                                 />
                             ))
                         ) : (
@@ -1073,6 +1189,7 @@
           const [isAddFirmModalOpen, setIsAddFirmModalOpen] = useState(false);
           const [isAddVisitModalOpen, setIsAddVisitModalOpen] = useState(false);
           const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+          const [isSimpleReportModalOpen, setIsSimpleReportModalOpen] = useState(false);
           const [isUnscheduledTasksModalOpen, setIsUnscheduledTasksModalOpen] = useState(false);
           const [reportVisit, setReportVisit] = useState(null);
           const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1143,13 +1260,6 @@
             if (firmToDelete && window.confirm(`「${firmToDelete.name}」を削除してもよろしいですか？関連するすべての訪問予定も削除されます。`)) {
                 setFirms(firms.filter((firm) => firm.id !== firmId));
                 setDailyVisits(dailyVisits.filter(v => v.firmId !== firmId));
-            }
-          };
-          
-          const resetVisitStatus = (firmId) => {
-            const firmToReset = firms.find(f => f.id === firmId);
-            if (firmToReset && window.confirm(`「${firmToReset.name}」を未訪問に戻しますか？`)) {
-              setFirms(firms.map(f => f.id === firmId ? { ...f, visited: false } : f));
             }
           };
 
@@ -1244,14 +1354,17 @@
             setCarriedOverTodos(prev => ({...prev, [firmId]: newTodos}));
           };
 
-
           const handleGenerateReport = (visit) => {
             setReportVisit(visit);
             setIsReportModalOpen(true);
           };
           
+          const handleShowHistoryReport = (visit) => {
+            setReportVisit(visit);
+            setIsSimpleReportModalOpen(true);
+          };
+          
           const handleAddVisitClick = (date) => {
-            // Add a safeguard to prevent crashes if date is not a string
             const validDate = typeof date === 'string' ? date : getToday();
             setSelectedDate(validDate);
             setIsAddVisitModalOpen(true);
@@ -1297,9 +1410,9 @@
               case 'rate':
                 return <RatePage firms={firms} visits={dailyVisits} />;
               case 'history':
-                return <HistoryPage firms={firms} visits={dailyVisits} onGenerateReport={handleGenerateReport} />;
+                return <HistoryPage firms={firms} visits={dailyVisits} onGenerateReport={handleShowHistoryReport} />;
               case 'master':
-                return <MasterPage firms={firms} onAddFirm={() => setIsAddFirmModalOpen(true)} onDeleteFirm={deleteFirm} onResetVisitStatus={resetVisitStatus} />;
+                return <MasterPage firms={firms} onAddFirm={() => setIsAddFirmModalOpen(true)} onDeleteFirm={deleteFirm} />;
               default:
                 return <div>Page not found</div>;
             }
@@ -1343,6 +1456,12 @@
                 onClose={() => setIsReportModalOpen(false)}
                 onUpdateVisit={updateDailyVisit}
                 onCompleteVisit={completeVisit}
+              />
+              
+              <SimpleReportModal
+                visit={reportVisit}
+                isOpen={isSimpleReportModalOpen}
+                onClose={() => setIsSimpleReportModalOpen(false)}
               />
               
               <UnscheduledTasksModal
