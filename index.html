@@ -310,6 +310,7 @@
           const [selectedFirm, setSelectedFirm] = useState(null);
           const [todos, setTodos] = useState(['']);
           const [showResults, setShowResults] = useState(false);
+          const [isClientVisit, setIsClientVisit] = useState(false);
           const searchContainerRef = useRef(null);
 
           useEffect(() => {
@@ -318,6 +319,7 @@
               setSelectedFirm(null);
               setTodos(['']);
               setShowResults(false);
+              setIsClientVisit(false);
             }
           }, [isOpen]);
           
@@ -383,7 +385,7 @@
             e.preventDefault();
             const finalTodos = todos.map(t => t.trim()).filter(t => t !== '');
             if (selectedFirm && date) {
-              onAddVisit({ firmId: selectedFirm.id, date, todos: finalTodos });
+              onAddVisit({ firmId: selectedFirm.id, date, todos: finalTodos, isClientVisit });
               onClose();
             }
           };
@@ -421,6 +423,19 @@
                         ))}
                       </ul>
                     )}
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                        type="checkbox"
+                        id="client-visit-checkbox"
+                        checked={isClientVisit}
+                        onChange={(e) => setIsClientVisit(e.target.checked)}
+                        className="h-4 w-4 text-cyan-600 border-slate-300 rounded focus:ring-cyan-500"
+                    />
+                    <label htmlFor="client-visit-checkbox" className="ml-2 text-sm text-slate-700">
+                        関与先訪問
+                    </label>
                   </div>
 
                   <div>
@@ -611,12 +626,12 @@
           return (
             <button
               onClick={() => setActivePage(page)}
-              className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors duration-200 ${
+              className={`flex flex-col items-center justify-center w-full pt-2 pb-1 gap-0.5 transition-colors duration-200 ${
                 isActive ? 'text-cyan-600' : 'text-slate-500 hover:text-cyan-500'
               }`}
             >
               <i className={`fas ${icon} fa-lg`}></i>
-              <span className="text-xs mt-1">{label}</span>
+              <span className="text-xs">{label}</span>
             </button>
           );
         };
@@ -809,8 +824,8 @@
         };
         
         // --- from pages/TodoPage.tsx ---
-        const TodayPage = ({ visits, onAddVisit }) => {
-          const todayFormatted = new Date().toLocaleDateString('ja-JP', {
+        const TodayPage = ({ visits, onAddVisit, today }) => {
+          const todayFormatted = new Date(today).toLocaleDateString('ja-JP', {
             year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
           });
 
@@ -856,41 +871,56 @@
         );
 
         const RatePage = ({ firms, visits }) => {
+          const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+
           const { visitedCount, totalCount, unvisitedCount, completionRate, processedFirms } = useMemo(() => {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+              if (!currentMonth) {
+                  return { visitedCount: 0, totalCount: firms.length, unvisitedCount: firms.length, completionRate: 0, processedFirms: [] };
+              }
 
-            const scheduledFirmIds = new Set(
-                visits
-                .filter(v => new Date(v.date) >= today && v.status === 'pending')
-                .map(v => v.firmId)
-            );
-            
-            const statusOrder = { unvisited: 1, scheduled: 2, visited: 3 };
+              const [year, month] = currentMonth.split('-').map(Number);
+              const startDate = new Date(year, month - 1, 1);
+              const endDate = new Date(year, month, 0);
+              endDate.setHours(23, 59, 59, 999);
+              
+              const monthlyCompletedVisits = visits.filter(v => {
+                  const visitDate = new Date(v.date);
+                  return v.status === 'completed' && visitDate >= startDate && visitDate <= endDate;
+              });
 
-            const firmsWithStatus = firms.map(firm => {
-                if (firm.visited) {
-                return { ...firm, status: 'visited', statusLabel: '訪問済み' };
-                }
-                if (scheduledFirmIds.has(firm.id)) {
-                return { ...firm, status: 'scheduled', statusLabel: '予定あり' };
-                }
-                return { ...firm, status: 'unvisited', statusLabel: '未訪問' };
-            }).sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || (a.code || '').localeCompare(b.code || ''));
-            
-            const total = firms.length;
-            const visited = firms.filter(f => f.visited).length;
-            const unvisited = total - visited;
-            const rate = total > 0 ? Math.round((visited / total) * 100) : 0;
-            
-            return { 
-                visitedCount: visited, 
-                totalCount: total, 
-                unvisitedCount: unvisited, 
-                completionRate: rate,
-                processedFirms: firmsWithStatus
-            };
-          }, [firms, visits]);
+              const monthlyScheduledVisits = visits.filter(v => {
+                  const visitDate = new Date(v.date);
+                  return v.status === 'pending' && visitDate >= startDate && visitDate <= endDate;
+              });
+
+              const visitedFirmIdsInMonth = new Set(monthlyCompletedVisits.map(v => v.firmId));
+              const scheduledFirmIdsInMonth = new Set(monthlyScheduledVisits.map(v => v.firmId));
+              
+              const total = firms.length;
+              const visited = visitedFirmIdsInMonth.size;
+              const unvisited = total - visited;
+              const rate = total > 0 ? Math.round((visited / total) * 100) : 0;
+              
+              const statusOrder = { unvisited: 1, scheduled: 2, visited: 3 };
+
+              const firmsWithStatus = firms.map(firm => {
+                  if (visitedFirmIdsInMonth.has(firm.id)) {
+                      return { ...firm, status: 'visited', statusLabel: '訪問済み' };
+                  }
+                  if (scheduledFirmIdsInMonth.has(firm.id)) {
+                      return { ...firm, status: 'scheduled', statusLabel: '予定あり' };
+                  }
+                  return { ...firm, status: 'unvisited', statusLabel: '未訪問' };
+              }).sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || (a.code || '').localeCompare(b.code || ''));
+              
+              return { 
+                  visitedCount: visited, 
+                  totalCount: total, 
+                  unvisitedCount: unvisited, 
+                  completionRate: rate,
+                  processedFirms: firmsWithStatus
+              };
+          }, [firms, visits, currentMonth]);
           
           const statusStyles = {
               visited: {
@@ -909,15 +939,26 @@
                   bgColor: 'bg-amber-50',
               }
           }
+          
+          const [year, month] = currentMonth.split('-').map(Number);
 
           return (
             <div className="container mx-auto px-4 py-6 max-w-4xl">
-              <p className="text-sm text-slate-500 mt-1 mb-4">訪問活動の進捗状況です。</p>
+              <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-bold text-slate-700">{`${year}年 ${month}月`}の進捗</h2>
+                  <input
+                      type="month"
+                      value={currentMonth}
+                      onChange={(e) => setCurrentMonth(e.target.value)}
+                      className="px-3 py-1.5 border border-slate-300 rounded-md"
+                  />
+              </div>
+
               <div className="grid grid-cols-2 gap-4 mb-6">
                   <StatCard title="担当件数" value={`${totalCount} 社`} icon="fa-building" color="bg-sky-500" />
-                  <StatCard title="訪問済み" value={`${visitedCount} 社`} icon="fa-check" color="bg-green-500" />
-                  <StatCard title="未訪問" value={`${unvisitedCount} 社`} icon="fa-person-running" color="bg-amber-500" />
-                  <StatCard title="面談率" value={`${completionRate} %`} icon="fa-bullseye" color="bg-cyan-600" />
+                  <StatCard title="月間訪問済み" value={`${visitedCount} 社`} icon="fa-check" color="bg-green-500" />
+                  <StatCard title="月間未訪問" value={`${unvisitedCount} 社`} icon="fa-person-running" color="bg-amber-500" />
+                  <StatCard title="月間面談率" value={`${completionRate} %`} icon="fa-bullseye" color="bg-cyan-600" />
               </div>
               
               <div className="mb-8">
@@ -1168,6 +1209,10 @@
                 setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
             };
 
+            const handleResetFilters = () => {
+                setFilters({ firmId: '', startDate: '', endDate: '' });
+            };
+
             const filteredVisits = useMemo(() => {
                 return visits
                     .filter(v => v.status === 'completed')
@@ -1197,6 +1242,14 @@
                                 <label className="block text-sm font-medium text-slate-700 mb-1">終了日</label>
                                 <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full px-3 py-2 border border-slate-300 rounded-md"/>
                             </div>
+                        </div>
+                        <div className="flex justify-end">
+                            <button
+                                onClick={handleResetFilters}
+                                className="px-4 py-2 bg-slate-500 text-white text-sm font-semibold rounded-md hover:bg-slate-600 transition"
+                            >
+                                フィルタをリセット
+                            </button>
                         </div>
                     </div>
 
@@ -1233,6 +1286,7 @@
           const [dailyVisits, setDailyVisits] = useState([]);
           const [carriedOverTodos, setCarriedOverTodos] = useState({});
           const [activePage, setActivePage] = useState('today');
+          const [today, setToday] = useState(new Date().toISOString().split('T')[0]);
 
           // Modal States
           const [isAddFirmModalOpen, setIsAddFirmModalOpen] = useState(false);
@@ -1241,7 +1295,18 @@
           const [isSimpleReportModalOpen, setIsSimpleReportModalOpen] = useState(false);
           const [isUnscheduledTasksModalOpen, setIsUnscheduledTasksModalOpen] = useState(false);
           const [reportVisit, setReportVisit] = useState(null);
-          const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+          const [selectedDate, setSelectedDate] = useState(today);
+
+          // Update today's date automatically
+          useEffect(() => {
+            const interval = setInterval(() => {
+                const newToday = new Date().toISOString().split('T')[0];
+                if (newToday !== today) {
+                    setToday(newToday);
+                }
+            }, 30000); // Check every 30 seconds
+            return () => clearInterval(interval);
+          }, [today]);
 
           // Load and save data from/to localStorage
           useEffect(() => {
@@ -1290,9 +1355,6 @@
             }
           }, [carriedOverTodos]);
           
-          // Date helper
-          const getToday = () => new Date().toISOString().split('T')[0];
-
           // Firm master management
           const addFirm = ({ code, name }) => {
             const newFirm = {
@@ -1316,11 +1378,13 @@
           const addDailyVisit = (data) => {
             const firm = firms.find(f => f.id === data.firmId);
             if (!firm) return;
+            
+            const firmName = data.isClientVisit ? `${firm.name} 関与先` : `${firm.code} ${firm.name}`;
 
             const newVisit = {
               id: Date.now().toString(),
               firmId: firm.id,
-              firmName: `${firm.code} ${firm.name}`,
+              firmName: firmName,
               date: data.date,
               status: 'pending',
               todos: data.todos.map((text, index) => ({
@@ -1414,7 +1478,7 @@
           };
           
           const handleAddVisitClick = (date) => {
-            const validDate = typeof date === 'string' ? date : getToday();
+            const validDate = typeof date === 'string' ? date : today;
             setSelectedDate(validDate);
             setIsAddVisitModalOpen(true);
           }
@@ -1490,7 +1554,7 @@
           const pageTitles = {
             today: '本日の訪問リスト',
             calendar: 'カレンダー',
-            rate: '面談率サマリー',
+            rate: '月次サマリー',
             history: '訪問履歴',
             master: '訪問先マスター・設定',
           };
@@ -1508,11 +1572,12 @@
             switch (activePage) {
               case 'today':
                 const todayVisits = dailyVisits
-                    .filter(v => v.date === getToday())
+                    .filter(v => v.date === today)
                     .map(visit => <VisitCard key={visit.id} visit={visit} {...commonVisitCardProps} />);
                 return <TodayPage
                   visits={todayVisits} 
-                  onAddVisit={() => handleAddVisitClick(getToday())}
+                  onAddVisit={() => handleAddVisitClick(today)}
+                  today={today}
                 />;
               case 'calendar':
                 return <CalendarPage 
